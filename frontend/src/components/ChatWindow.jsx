@@ -30,14 +30,21 @@ const ChatWindow = ({ tableName }) => {
         try {
             const data = await api.searchAndChat(userQuery, tableName);
             
-            let botReply = `${data.answer}\n\n`;
+            let botReply = `${data.answer}`;
             
+            // Format the sources horizontally and remove duplicates
             if (data.sources && data.sources.length > 0) {
-                botReply += "---\n**Sources:**\n";
-                data.sources.forEach((source, idx) => {
-                    const page = source.metadata?.page_number || "?";
-                    botReply += `* [Page ${page}] Match score: ${(source.similarity * 100).toFixed(1)}%\n`;
-                });
+                // 1. Extract just the page numbers
+                const rawPages = data.sources.map(source => source.metadata?.page_number || "?");
+                
+                // 2. Use a Set to remove any duplicate page numbers
+                const uniquePages = [...new Set(rawPages)];
+                
+                // 3. Wrap them in brackets and join with commas
+                const formattedSources = uniquePages.map(page => `[Page ${page}]`).join(", ");
+                
+                // 4. Append to the bottom of the bot's reply
+                botReply += `\n\n**Sources:** ${formattedSources}`;
             }
 
             setMessages(prev => [...prev, { text: botReply, sender: "bot" }]);

@@ -1,22 +1,13 @@
-import os
-from huggingface_hub import InferenceClient
-from dotenv import load_dotenv
+import requests
 
-load_dotenv()
+# Ollama automatically runs a local API server on port 11434
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "llama3.2" # The model we just downloaded!
 
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-# We use the Serverless Inference API so you don't need 16GB of local RAM to run this!
-# We are using Microsoft's incredibly fast Phi-3.5 model for RAG.
-client = InferenceClient(
-    model="microsoft/Phi-3.5-mini-instruct",
-    token=HF_TOKEN
-)
+print(f"✅ Configured to use Local Ollama Model: {MODEL_NAME}")
 
 def generate_rag_answer(query: str, retrieved_chunks: list) -> str:
-    """Takes retrieved chunks and asks the LLM to formulate an answer."""
-    
-    # 1. Combine all the chunk text into a single context block
+    # 1. Combine the chunks into our context string
     context = "\n\n".join([f"Chunk {i+1}:\n{chunk['content']}" for i, chunk in enumerate(retrieved_chunks)])
     
     # 2. Build the strict RAG prompt
@@ -30,15 +21,27 @@ def generate_rag_answer(query: str, retrieved_chunks: list) -> str:
     
     Answer:"""
 
-    # 3. Request generation from the LLM
+    # 3. Format the payload for Ollama's local API
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": prompt,
+        "stream": False, # Tell it to send the whole answer at once, not word-by-word
+        "options": {
+            "temperature": 0.3 # Keep it factual
+        }
+    }
+
     try:
-        response = client.text_generation(
-            prompt,
-            max_new_tokens=400,
-            temperature=0.3, # Low temperature keeps it factual
-            return_full_text=False
-        )
-        return response.strip()
+        # 4. Send the request to your local computer
+        response = requests.post(OLLAMA_URL, json=payload)
+        response.raise_for_status() # Check for HTTP errors
+        
+        data = response.json()
+        return data.get("response", "").strip()
+        
+    except requests.exceptions.ConnectionError:
+        return "❌ Error: Could not connect to Ollama. Is the Ollama app running in the background?"
     except Exception as e:
-        print(f"LLM Generation Error: {e}")
-        return "I found the relevant chunks, but the AI model encountered an error generating the final response."
+        error_msg = repr(e) 
+        print(f"❌ Local LLM Generation Error: {error_msg}")
+        return f"I found the relevant chunks, but the local model encountered an error: {error_msg}"
